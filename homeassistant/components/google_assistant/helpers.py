@@ -142,6 +142,10 @@ class AbstractConfig(ABC):
     def should_report_state(self):
         """Return if states should be proactively reported."""
 
+    async def async_refresh_config(self) -> None:
+        """Refresh the configuration before answering a SYNC request."""
+        return
+
     @property
     def is_local_connected(self) -> bool:
         """Return if local is connected."""

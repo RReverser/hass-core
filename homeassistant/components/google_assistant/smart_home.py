@@ -137,6 +137,7 @@ async def async_devices_sync(
 
     agent_user_id = data.config.get_agent_user_id_from_context(data.context)
     await data.config.async_connect_agent_user(agent_user_id)
+    await data.config.async_refresh_config()
 
     devices = await async_devices_sync_response(hass, data.config, agent_user_id)
     return create_sync_response(agent_user_id, devices)

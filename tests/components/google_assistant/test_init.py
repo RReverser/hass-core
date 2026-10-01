@@ -3,14 +3,18 @@
 from http import HTTPStatus
 from unittest.mock import patch
 
+import pytest
+
 from homeassistant.components import google_assistant as ga
 from homeassistant.components.google_assistant import (
     DOMAIN,
     GOOGLE_ASSISTANT_SCHEMA,
     GoogleConfig,
+    smart_home as sh,
 )
 from homeassistant.const import SERVICE_RELOAD
 from homeassistant.core import Context, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 
 from .test_http import DUMMY_CONFIG
@@ -153,3 +157,62 @@ async def test_reload_service_removed_from_yaml(hass: HomeAssistant) -> None:
     assert not google_config.should_expose("light.kitchen")
     assert not google_config.should_report_state
     mock_sync.assert_called_once_with()
+
+
+async def test_sync_request_reloads_yaml(hass: HomeAssistant) -> None:
+    """Test a SYNC request from Google answers with the current YAML config."""
+    google_config = await _async_setup(hass)
+    hass.states.async_set("switch.outlet", "on", {"friendly_name": "Outlet"})
+
+    with (
+        patch(
+            "homeassistant.components.google_assistant.http.async_integration_yaml_config",
+            return_value=_yaml_config(
+                entity_config={"switch.outlet": {"name": "Coffee machine"}}
+            ),
+        ),
+        patch.object(GoogleConfig, "async_sync_entities_all") as mock_sync,
+    ):
+        result = await sh.async_handle_message(
+            hass,
+            google_config,
+            "test-agent",
+            "test-agent",
+            {"requestId": "abc", "inputs": [{"intent": "action.devices.SYNC"}]},
+            ga.const.SOURCE_CLOUD,
+        )
+
+    assert google_config.entity_config == {
+        "switch.outlet": {"name": "Coffee machine", "expose": True}
+    }
+    devices = result["payload"]["devices"]
+    assert [device["name"]["name"] for device in devices] == ["Coffee machine"]
+    mock_sync.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error", [HomeAssistantError("Invalid YAML"), FileNotFoundError("configuration")]
+)
+async def test_sync_request_unreadable_yaml(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture, error: Exception
+) -> None:
+    """Test a SYNC request is answered when the YAML can't be read."""
+    google_config = await _async_setup(hass)
+    hass.states.async_set("switch.outlet", "on", {"friendly_name": "Outlet"})
+
+    with patch(
+        "homeassistant.components.google_assistant.http.async_integration_yaml_config",
+        side_effect=error,
+    ):
+        result = await sh.async_handle_message(
+            hass,
+            google_config,
+            "test-agent",
+            "test-agent",
+            {"requestId": "abc", "inputs": [{"intent": "action.devices.SYNC"}]},
+            ga.const.SOURCE_CLOUD,
+        )
+
+    devices = result["payload"]["devices"]
+    assert [device["name"]["name"] for device in devices] == ["Outlet"]
+    assert "Could not reload the YAML configuration" in caplog.text

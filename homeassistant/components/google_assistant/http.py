@@ -133,6 +133,18 @@ class GoogleConfig(AbstractConfig):
         self.hass.data[DOMAIN][DATA_CONFIG] = self._config = conf.get(DOMAIN, {})
         self.async_update_report_state()
 
+    @override
+    async def async_refresh_config(self) -> None:
+        """Re-read the YAML configuration before answering a SYNC request."""
+        try:
+            # Unlike the reload service, don't request a sync: this already is one
+            await self.async_reload_yaml()
+        except (HomeAssistantError, OSError) as err:
+            _LOGGER.warning(
+                "Could not reload the YAML configuration, using the current one: %s",
+                err,
+            )
+
     @callback
     def async_update_report_state(self) -> None:
         """Enable or disable reporting state as configured."""

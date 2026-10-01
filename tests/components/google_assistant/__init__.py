@@ -60,6 +60,9 @@ class MockConfig(http.GoogleConfig):
         """Get agent user ID making request."""
         return context.user_id
 
+    async def async_refresh_config(self) -> None:
+        """Keep the mocked configuration, there is no YAML to re-read."""
+
     def should_expose(self, entity_id):
         """Expose it all."""
         return self._should_expose is None or self._should_expose(entity_id)
