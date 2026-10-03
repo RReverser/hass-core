@@ -347,9 +347,9 @@ async def test_stream_retries(
     # Stop stream, if it hasn't quit already
     await stream.stop()
 
-    # Stream marked initially available, then marked as failed, then marked available
-    # before the final failure that exits the stream.
-    assert available_states == [True, False, True]
+    # Stream marked as failed and kept unavailable while retrying, then marked
+    # available again when the worker exits.
+    assert available_states == [False, True]
 
 
 async def test_hls_playlist_view_no_output(

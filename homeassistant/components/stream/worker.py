@@ -70,8 +70,10 @@ class StreamState:
         hass: HomeAssistant,
         outputs_callback: Callable[[], Mapping[str, StreamOutput]],
         diagnostics: Diagnostics,
+        available_callback: Callable[[], None] | None = None,
     ) -> None:
         """Initialize StreamState."""
+        self._available_callback = available_callback
         self._stream_id: int = 0
         self.hass = hass
         self._outputs_callback: Callable[[], Mapping[str, StreamOutput]] = (
@@ -96,6 +98,11 @@ class StreamState:
     def stream_id(self) -> int:
         """Return the readonly stream_id attribute."""
         return self._stream_id
+
+    def mark_available(self) -> None:
+        """Mark the stream as available once the source is delivering video."""
+        if self._available_callback:
+            self._available_callback()
 
     def discontinuity(self) -> None:
         """Mark the stream as having been restarted."""
@@ -730,6 +737,7 @@ def stream_worker(
         stream_settings,
     )
     muxer.reset(start_dts)
+    stream_state.mark_available()
 
     with closing_stream_worker(container, muxer):
         # Mux the first keyframe, then proceed through the rest of the packets
