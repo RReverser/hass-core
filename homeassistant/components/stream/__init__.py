@@ -466,11 +466,15 @@ class Stream:
         # integration without installing reqs
         from .worker import StreamState, stream_worker  # noqa: PLC0415
 
-        stream_state = StreamState(self.hass, self.outputs, self._diagnostics)
+        stream_state = StreamState(
+            self.hass,
+            self.outputs,
+            self._diagnostics,
+            lambda: self._set_state(True),
+        )
         wait_timeout = 0
         while not self._thread_quit.wait(timeout=wait_timeout):
             start_time = time.time()
-            self._set_state(True)
             self._diagnostics.set_value(
                 "keepalive", self.dynamic_stream_settings.preload_stream
             )

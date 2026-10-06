@@ -780,6 +780,56 @@ async def test_stream_stopped_while_decoding(hass: HomeAssistant) -> None:
     assert stream.available
 
 
+async def test_stream_unavailable_until_video_received(
+    hass: HomeAssistant, should_retry: MagicMock
+) -> None:
+    """Test a retrying stream is only marked available once video is received."""
+    stream = Stream(
+        hass,
+        STREAM_SOURCE,
+        {},
+        hass.data[DOMAIN][ATTR_SETTINGS],
+        dynamic_stream_settings(),
+    )
+    stream.add_provider(HLS_PROVIDER)
+
+    available_states = []
+    stream.set_update_callback(lambda: available_states.append(stream.available))
+
+    py_av = MockPyAv()
+    py_av.container.packets = PacketSequence(TEST_SEQUENCE_LENGTH)
+
+    attempts = 0
+    finished = hass.loop.create_future()
+
+    def open_side_effect(stream_source, *args, **kwargs):
+        nonlocal attempts
+        if isinstance(stream_source, io.BytesIO):
+            return py_av.open(stream_source, args, kwargs)
+        attempts += 1
+        if attempts <= 2:
+            raise av.HTTPBadRequestError(500, "error")
+        should_retry.return_value = False
+        hass.loop.call_soon_threadsafe(finished.set_result, None)
+        return py_av.open(stream_source, args, kwargs)
+
+    with (
+        patch("av.open", side_effect=open_side_effect),
+        patch("homeassistant.components.stream.STREAM_RESTART_INCREMENT", 0),
+    ):
+        should_retry.return_value = True
+        await stream.start()
+        worker_thread = stream._thread
+        await finished
+        await hass.async_add_executor_job(worker_thread.join)
+        await hass.async_block_till_done()
+
+    await stream.stop()
+
+    assert attempts == 3
+    assert available_states[:3] == [False, False, True]
+
+
 async def test_update_stream_source(hass: HomeAssistant) -> None:
     """Tests that the worker is re-invoked when the stream source is updated."""
     worker_open = threading.Event()
